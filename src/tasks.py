@@ -1,7 +1,7 @@
 import math
 
 import torch
-
+import numpy as np
 
 def squared_error(ys_pred, ys):
     return (ys - ys_pred).square()
@@ -60,6 +60,7 @@ def get_task_sampler(
         "quadratic_regression": QuadraticRegression,
         "relu_2nn_regression": Relu2nnRegression,
         "decision_tree": DecisionTree,
+        "polynomial_regression": PolynomialRegression,
     }
     if task_name in task_names_to_classes:
         task_cls = task_names_to_classes[task_name]
@@ -71,6 +72,111 @@ def get_task_sampler(
     else:
         print("Unknown task")
         raise NotImplementedError
+
+
+#######################################################
+# generate data from chebyshevPolynomial function#
+#something wrong with data generation, the y seems to be too big, so the loss exploded
+#maybe it's because wrong implementation or we should scale the y to be [-1,1]
+import torch
+import numpy as np
+
+def chebyshev_polynomials(x, degree):
+    """计算从 T0 到 T_degree 的 Chebyshev 多项式值。
+    输入:
+        x: [N] 或 [B, N]
+    输出:
+        T: [B, N, degree+1]
+    """
+    if x.ndim == 1:
+        x = x.unsqueeze(0)  # [1, N]
+    B, N = x.shape
+    T = torch.zeros(B, N, degree + 1, device=x.device)
+    T[:, :, 0] = 1
+    if degree >= 1:
+        T[:, :, 1] = x
+    for n in range(1, degree):
+        T[:, :, n + 1] = 2 * x * T[:, :, n] - T[:, :, n - 1]
+    return T
+
+
+class PolynomialRegression(Task):
+    def __init__(
+        self,
+        n_dims,          # 输入维度 (这里只支持 1)
+        batch_size,
+        pool_dict=None,
+        seeds=None,
+        max_degree=11,
+        scale=1.0,
+    ):
+        """
+        论文中的 Chebyshev 多项式任务:
+            y = Σ c_i * T_i(x),   c_i ~ N(0,1)
+        每个任务一组随机系数。
+        """
+        super(PolynomialRegression, self).__init__(n_dims, batch_size, pool_dict, seeds)
+        #assert n_dims == 1, "PolynomialRegression 仅支持一维输入。"
+        self.max_degree = max_degree
+        self.scale = scale
+
+        if pool_dict is None and seeds is None:
+            # 每个任务都有一组随机多项式系数 [b_size, degree+1]
+            self.coeffs = torch.randn(self.b_size, self.max_degree + 1)
+        elif seeds is not None:
+            self.coeffs = torch.zeros(self.b_size, self.max_degree + 1)
+            generator = torch.Generator()
+            assert len(seeds) == self.b_size
+            for i, seed in enumerate(seeds):
+                generator.manual_seed(seed)
+                self.coeffs[i] = torch.randn(self.max_degree + 1, generator=generator)
+        else:
+            assert "coeffs" in pool_dict
+            indices = torch.randperm(len(pool_dict["coeffs"]))[:batch_size]
+            self.coeffs = pool_dict["coeffs"][indices]
+
+    @staticmethod
+    def generate_pool_dict(n_dims, num_tasks, max_degree=11, **kwargs):
+        """生成任务池，每个任务一组系数"""
+        assert n_dims == 1, "PolynomialRegression 仅支持一维输入。"
+        return {"coeffs": torch.randn(num_tasks, max_degree + 1)}
+
+    def evaluate(self, xs_b,max_degree):
+        """
+        xs_b: [batch_size, n_points, n_dims] (n_dims=1)
+        输出: ys_b: [batch_size, n_points]
+        """
+        x = xs_b[..., 0]  # 取出一维输入 [batch_size, n_points]
+        B, N = x.shape
+        self.max_degree=max_degree
+        degree = self.max_degree
+        coeffs = self.coeffs.to(x.device)
+
+        # 计算所有 T_i(x)，使用递推公式
+        T = torch.zeros(B, N, degree + 1, device=x.device)
+        T[:, :, 0] = 1
+        if degree >= 1:
+            T[:, :, 1] = x
+        for i in range(1, degree):
+            T[:, :, i + 1] = 2 * x * T[:, :, i] - T[:, :, i - 1]
+        #to do curriculum learning
+        coeffs_trunc = coeffs[:, :degree+1]
+        print("task.max_degree:",self.max_degree)
+        print("task.scale:",self.scale)
+        # print("T:",T)
+        # 计算 y = Σ c_i * T_i(x)
+        ys_b = (T * coeffs_trunc.unsqueeze(1)).sum(dim=-1)
+        return self.scale * ys_b
+
+    @staticmethod
+    def get_metric():
+        return squared_error
+
+    @staticmethod
+    def get_training_metric():
+        return mean_squared_error
+  ##########################################################################
+
 
 
 class LinearRegression(Task):

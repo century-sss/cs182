@@ -37,12 +37,18 @@ relevant_model_names = {
         "3-Nearest Neighbors",
         "2-layer NN, GD",
     ],
+    "polynomial_regression": [
+        "Transformer",
+        #"Least Squares",
+        #"3-Nearest Neighbors",
+        "ChebyshevFitModel",
+    ],
+
 }
 
 
 def basic_plot(metrics, models=None, trivial=1.0):
     fig, ax = plt.subplots(1, 1)
-
     if models is not None:
         metrics = {k: metrics[k] for k in models}
 
@@ -57,8 +63,13 @@ def basic_plot(metrics, models=None, trivial=1.0):
     ax.set_xlabel("in-context examples")
     ax.set_ylabel("squared error")
     ax.set_xlim(-1, len(low) + 0.1)
-    ax.set_ylim(-0.1, 1.25)
-
+    #ax.set_ylim(-0.1, 1.25)
+#############################
+    all_values = [v for vs in metrics.values() for v in vs["mean"]]
+    y_min, y_max = min(all_values), max(all_values)
+    margin = 0.1 * (y_max - y_min)
+    ax.set_ylim(y_min - margin, y_max + margin)
+#############################
     legend = ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
     fig.set_size_inches(4, 3)
     for line in legend.get_lines():

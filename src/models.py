@@ -71,12 +71,73 @@ def get_relevant_baselines(task_name):
             (XGBoostModel, {}),
             (AveragingModel, {}),
         ],
+        "polynomial_regression": [
+
+        (ChebyshevFitModel, {"max_degree": 11}), #max_degree should change according to the max_degree we train
+        ],
     }
 
     models = [model_cls(**kwargs) for model_cls, kwargs in task_to_baselines[task_name]]
     return models
 
+##############################################
+#baseline model for polynomial function
+import numpy as np  
 
+def chebyshev_polynomials(x, degree):
+    if x.ndim == 1:
+        x = x.unsqueeze(0)
+    B, N = x.shape
+    T = torch.zeros(B, N, degree + 1, device=x.device)
+    T[:, :, 0] = 1
+    if degree >= 1:
+        T[:, :, 1] = x
+    for n in range(1, degree):
+        T[:, :, n + 1] = 2 * x * T[:, :, n] - T[:, :, n - 1]
+    return T
+
+
+class ChebyshevFitModel:
+    """
+    Baseline: fits Chebyshev coefficients via least squares for each task.
+    Predicts y = sum_i c_i * T_i(x)
+    """
+    def __init__(self, max_degree=11, l2_reg=1e-6):
+        self.max_degree = max_degree
+        print("fit model degree:",self.max_degree)
+        self.name = f"ChebyshevFitModel"
+        self.l2_reg = l2_reg
+
+    def __call__(self, xs, ys, inds=None):
+        """
+        xs: [B, N, 1]
+        ys: [B, N]
+        Returns predicted ys of same shape [B, N]
+        """
+        xs, ys = xs.cpu(), ys.cpu()
+        B, N, _ = xs.shape
+        degree = self.max_degree
+
+        preds = torch.zeros_like(ys)
+
+        for j in range(B):
+            x = xs[j, :, 0]  # [N]
+            y = ys[j, :]     # [N]
+
+            # Build Chebyshev basis
+            T = chebyshev_polynomials(x, degree)[0]  # [N, degree+1]
+            D = degree + 1
+
+            # Regularized least squares: c = (T^T T + λI)^-1 T^T y
+            XtX = T.T @ T
+            I = torch.eye(D)
+            c = torch.linalg.solve(XtX + self.l2_reg * I, T.T @ y)
+
+            # Predict all points
+            preds[j] = (T @ c)
+
+        return preds
+###########################################################################
 class TransformerModel(nn.Module):
     def __init__(self, n_dims, n_positions, n_embd=128, n_layer=12, n_head=4):
         super(TransformerModel, self).__init__()
@@ -188,6 +249,7 @@ class LeastSquaresModel:
 
         for i in inds:
             if i == 0:
+                #
                 preds.append(torch.zeros_like(ys[:, 0]))  # predict zero for first point
                 continue
             train_xs, train_ys = xs[:, :i], ys[:, :i]

@@ -26,11 +26,11 @@ def get_model_from_run(run_path, step=-1, only_conf=False):
     if step == -1:
         state_path = os.path.join(run_path, "state.pt")
         state = torch.load(state_path)
-        model.load_state_dict(state["model_state_dict"])
+        model.load_state_dict(state["model_state_dict"],strict=False)
     else:
         model_path = os.path.join(run_path, f"model_{step}.pt")
         state_dict = torch.load(model_path)
-        model.load_state_dict(state_dict)
+        model.load_state_dict(state_dict,strict=False)
 
     return model, conf
 
@@ -38,7 +38,7 @@ def get_model_from_run(run_path, step=-1, only_conf=False):
 # Functions for evaluation
 
 
-def eval_batch(model, task_sampler, xs, xs_p=None):
+def eval_batch(degree,model, task_sampler, xs, xs_p=None):
     task = task_sampler()
     if torch.cuda.is_available() and model.name.split("_")[0] in ["gpt2", "lstm"]:
         device = "cuda"
@@ -46,7 +46,7 @@ def eval_batch(model, task_sampler, xs, xs_p=None):
         device = "cpu"
 
     if xs_p is None:
-        ys = task.evaluate(xs)
+        ys = task.evaluate(xs,dehree)
         pred = model(xs.to(device), ys.to(device)).detach()
         metrics = task.get_metric()(pred.cpu(), ys)
     else:
@@ -348,6 +348,8 @@ def baseline_names(name):
         return "Greedy Tree Learning"
     if "xgboost" in name:
         return "XGBoost"
+    if "chebyshev" in name:
+        return "ChebyshevFitModel"
     return name
 
 

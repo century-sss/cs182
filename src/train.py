@@ -11,8 +11,10 @@ from eval import get_run_metrics
 from tasks import get_task_sampler
 from samplers import get_data_sampler
 from curriculum import Curriculum
+from curriculum import PolyCurriculum
 from schema import schema
 from models import build_model
+from models import ChebyshevFitModel
 
 import wandb
 
@@ -37,7 +39,8 @@ def sample_seeds(total_seeds, count):
 
 def train(model, args):
     optimizer = torch.optim.Adam(model.parameters(), lr=args.training.learning_rate)
-    curriculum = Curriculum(args.training.curriculum)
+    #curriculum = Curriculum(args.training.curriculum)
+    poly_curriculum = PolyCurriculum(args.training.curriculum)
 
     starting_step = 0
     state_path = os.path.join(args.out_dir, "state.pt")
@@ -47,7 +50,7 @@ def train(model, args):
         optimizer.load_state_dict(state["optimizer_state_dict"])
         starting_step = state["train_step"]
         for i in range(state["train_step"] + 1):
-            curriculum.update()
+            poly_curriculum.update()
 
     n_dims = model.n_dims
     bsize = args.training.batch_size
@@ -67,8 +70,8 @@ def train(model, args):
         data_sampler_args = {}
         task_sampler_args = {}
 
-        if "sparse" in args.training.task:
-            task_sampler_args["valid_coords"] = curriculum.n_dims_truncated
+        #if "sparse" in args.training.task:
+            #task_sampler_args["valid_coords"] = curriculum.n_dims_truncated
         if num_training_examples is not None:
             assert num_training_examples >= bsize
             seeds = sample_seeds(num_training_examples, bsize)
@@ -76,28 +79,49 @@ def train(model, args):
             task_sampler_args["seeds"] = [s + 1 for s in seeds]
 
         xs = data_sampler.sample_xs(
-            curriculum.n_points,
+            poly_curriculum.n_points,
             bsize,
-            curriculum.n_dims_truncated,
+            1,  #hardcoded as 1?
             **data_sampler_args,
         )
+        #print("xs:",xs)
+
         task = task_sampler(**task_sampler_args)
-        ys = task.evaluate(xs)
+        ys = task.evaluate(xs,poly_curriculum.max_degree)
 
         loss_func = task.get_training_metric()
+##############################################
+        #should see the paper,how do they implement their baseline?
+        #my_model = ChebyshevFitModel(max_degree=poly_curriculum.max_degree)
+        #y_pred = my_model(xs.cuda(), ys.cuda())
+        #print("y_pred:",y_pred)
+        #print("ys:",ys)
+        #print("MSE:", ((y_pred.cuda() - ys.cuda()) ** 2).mean().item())
+###############################################
 
         loss, output = train_step(model, xs.cuda(), ys.cuda(), optimizer, loss_func)
 
-        point_wise_tags = list(range(curriculum.n_points))
+###########################################################
+        #output_cpu = output.detach().cpu()
+        #ys_cpu = ys.detach().cpu()
+        #print("=== Sample model output vs target ===")
+        #for b in range(min(3, output_cpu.shape[0])):  # 打印前3个batch样本
+            #print(f"\n[Sample {b}]")
+            #print("output:", output_cpu[b].numpy())
+            #print("target:", ys_cpu[b].numpy())
+            #print("difference:", (output_cpu[b] - ys_cpu[b]).abs().mean().item())
+############################################################
+        point_wise_tags = list(range(poly_curriculum.n_points))
         point_wise_loss_func = task.get_metric()
         point_wise_loss = point_wise_loss_func(output, ys.cuda()).mean(dim=0)
-
+#why basline_loss is like this? 
+#not sure about this
         baseline_loss = (
             sum(
-                max(curriculum.n_dims_truncated - ii, 0)
-                for ii in range(curriculum.n_points)
+                max(poly_curriculum.max_degree - ii, 0)
+                for ii in range(poly_curriculum.n_points)
             )
-            / curriculum.n_points
+            / poly_curriculum.n_points
         )
 
         if i % args.wandb.log_every_steps == 0 and not args.test_run:
@@ -108,13 +132,14 @@ def train(model, args):
                     "pointwise/loss": dict(
                         zip(point_wise_tags, point_wise_loss.cpu().numpy())
                     ),
-                    "n_points": curriculum.n_points,
-                    "n_dims": curriculum.n_dims_truncated,
+                    "n_points": poly_curriculum.n_points,
+                    "max_degree": poly_curriculum.max_degree
+                    #"n_dims": poly_curriculum.n_dims_truncated,
                 },
                 step=i,
             )
 
-        curriculum.update()
+        poly_curriculum.update()
 
         pbar.set_description(f"loss {loss}")
         if i % args.training.save_every_steps == 0 and not args.test_run:
