@@ -148,7 +148,8 @@ class PolynomialRegression(Task):
         """
         x = xs_b[..., 0]  # 取出一维输入 [batch_size, n_points]
         B, N = x.shape
-        self.max_degree=max_degree
+        if max_degree:
+          self.max_degree=max_degree
         degree = self.max_degree
         coeffs = self.coeffs.to(x.device)
 
@@ -161,8 +162,8 @@ class PolynomialRegression(Task):
             T[:, :, i + 1] = 2 * x * T[:, :, i] - T[:, :, i - 1]
         #to do curriculum learning
         coeffs_trunc = coeffs[:, :degree+1]
-        print("task.max_degree:",self.max_degree)
-        print("task.scale:",self.scale)
+        #print("task.max_degree:",self.max_degree)
+        #print("task.scale:",self.scale)
         # print("T:",T)
         # 计算 y = Σ c_i * T_i(x)
         ys_b = (T * coeffs_trunc.unsqueeze(1)).sum(dim=-1)

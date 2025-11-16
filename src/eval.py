@@ -38,7 +38,7 @@ def get_model_from_run(run_path, step=-1, only_conf=False):
 # Functions for evaluation
 
 
-def eval_batch(degree,model, task_sampler, xs, xs_p=None):
+def eval_batch(model, task_sampler, xs, xs_p=None):
     task = task_sampler()
     if torch.cuda.is_available() and model.name.split("_")[0] in ["gpt2", "lstm"]:
         device = "cuda"
@@ -46,7 +46,7 @@ def eval_batch(degree,model, task_sampler, xs, xs_p=None):
         device = "cpu"
 
     if xs_p is None:
-        ys = task.evaluate(xs,dehree)
+        ys = task.evaluate(xs,None)
         pred = model(xs.to(device), ys.to(device)).detach()
         metrics = task.get_metric()(pred.cpu(), ys)
     else:
@@ -380,7 +380,7 @@ def read_run_dir(run_dir):
             params["n_dims"] = conf.model.n_dims
             params["n_layer"] = conf.model.n_layer
             params["n_head"] = conf.model.n_head
-            params["run_name"] = conf.wandb.name
+            params["run_name"] = f"{params['task']}/{params['run_id']}"
 
             for k, v in params.items():
                 if k not in all_runs:

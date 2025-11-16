@@ -3,8 +3,12 @@ inherit:
     - wandb.yaml
 
 model:
-    n_dims: 1
-    n_positions: 11
+    "family": "gpt2"
+    "n_positions": 81
+    "n_dims": 128
+    "n_embd": 128
+    "n_layer": 6
+    "n_head": 4
 
 training:
     task: polynomial_regression
@@ -14,7 +18,7 @@ training:
     learning_rate: 0.0001
     save_every_steps: 1000
     keep_every_steps: 100000
-    train_steps: 10000
+    train_steps: 1
     curriculum:
         degree:
           start: 1

@@ -72,8 +72,10 @@ def get_relevant_baselines(task_name):
             (AveragingModel, {}),
         ],
         "polynomial_regression": [
-
+        (LeastSquaresModel, {}),
         (ChebyshevFitModel, {"max_degree": 11}), #max_degree should change according to the max_degree we train
+        (NNModel, {"n_neighbors": 3}),
+        (DecisionTreeModel, {"max_depth": 4}),
         ],
     }
 

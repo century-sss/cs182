@@ -39,8 +39,8 @@ relevant_model_names = {
     ],
     "polynomial_regression": [
         "Transformer",
-        #"Least Squares",
-        #"3-Nearest Neighbors",
+        "Least Squares",
+        "3-Nearest Neighbors",
         "ChebyshevFitModel",
     ],
 
@@ -94,7 +94,7 @@ def collect_results(run_dir, df, valid_row=None, rename_eval=None, rename_model=
             processed_results = {}
             for model_name, m in results.items():
                 if "gpt2" in model_name in model_name:
-                    model_name = r.model
+                    model_name = "Transformer"
                     if rename_model is not None:
                         model_name = rename_model(model_name, r)
                 else:
