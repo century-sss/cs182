@@ -5,6 +5,10 @@ from .transformer import (
     Mamba,
 )
 
+from .gpt2_moe import (
+    MoEGPT2
+)
+
 from .finetuning import (
     LoraGPT2Model,
     SoftPromptingGPT2Model,
@@ -44,6 +48,8 @@ MODELS: dict[str, type[ContextModel]] = {
     "zero"           : ZeroModel,
     "lora"           : LoraGPT2Model,
     "soft_prompting" : SoftPromptingGPT2Model,
+
+    "moe_gpt2" : MoEGPT2,
 }
 
 __all__ = [

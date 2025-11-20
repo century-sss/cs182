@@ -1,0 +1,40 @@
+# tiny_poly.yml
+function_class:
+  type: chebyshev kernel linear regression
+  lowest_degree: 0
+  highest_degree: 3         # reduce degree to keep values reasonable
+  different_degrees: false  # disable random masking for now
+  fixed_linear_coefficients: 1
+
+steps: 10000                # very small number for fast testing
+log_freq: 100
+checkpoint_freq: 1000
+optim:
+  type: adam
+  lr: 0.001
+loss_fn:
+  type: mse
+b_size: 64                  # tiny batch size for fast iteration
+
+seq_len: !curriculum
+  start: 5
+  stop: 11
+  step_size: 1
+  step_len: 100
+
+x_dim: 1 # must b 1 
+
+x_dist:
+  type: uniform              # use uniform instead of normal
+
+# Use a small GPT2 backbone
+model:
+  type: gpt2
+  n_embd: 64
+  n_layer: 6
+  n_head: 4
+  x_dim: 1                  # must match function_class input dim
+  n_positions: 32
+  y_dim: 1
+
+# baseline_models: []

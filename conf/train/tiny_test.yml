@@ -1,0 +1,39 @@
+# tiny_test.yml
+function_class:
+  type: linear regression
+steps: 10000              # very small number for fast testing
+log_freq: 100
+checkpoint_freq: 1000
+optim:
+  type: adam
+  lr: 0.001
+loss_fn:
+  type: mse
+b_size: 64                # tiny batch size for fast iteration
+
+seq_len: !curriculum
+  start: 5
+  stop: 11
+  step_size: 2
+  step_len: 100
+
+x_dim: !curriculum
+  start: 2
+  stop: 5
+  step_size: 1
+  step_len: 100
+
+x_dist:
+  type: normal
+
+# Use a small GPT2 backbone
+model:
+  type: gpt2
+  n_embd: 64
+  n_layer: 6
+  n_head: 4
+  x_dim: 2
+  n_positions: 32
+  y_dim: 1
+
+baseline_models: []

@@ -63,6 +63,7 @@ class ChebyshevKernelLinearRegression(FunctionClass):
         # x_pows: (batch_size, seq_length, repeated x_values but to the power of different degrees)
         x_pows = x_batch.pow(torch.arange(0, self.highest_degree + 1))
 
+
         # chebyshev_coeffs: (different basis polys, one element for each possible degree of poly)
         # basis_polys: (batch_size, 1 value for each poly in chebyshev_coeffs, seq_length)
         basis_polys = self.chebyshev_coeffs @ x_pows.permute(0, 2, 1)
