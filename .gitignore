@@ -1,4 +1,11 @@
-.ipynb_checkpoints
 __pycache__
-models.zip
-models
+**/.ipynb_checkpoints
+checkpoints/
+.venv
+.vscode
+wandb
+/models
+.idea
+*.pkl
+*.pth
+oryx-build-commands.txt

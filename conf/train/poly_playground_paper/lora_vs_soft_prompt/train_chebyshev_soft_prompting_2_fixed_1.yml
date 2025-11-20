@@ -1,0 +1,22 @@
+function_class: 
+    type: chebyshev kernel linear regression
+    lowest_degree: 0
+    highest_degree: 5
+    fixed_linear_coefficients: 1
+    different_degrees: False
+steps: 1002000
+log_freq: 2000
+checkpoint_freq: 20000
+optim:
+    type: adam
+    lr: 0.00005
+loss_fn:
+    type: mse
+b_size: 64
+seq_len: 31
+x_dim: 1
+x_dist:
+    type: uniform
+model: 
+    <<: *soft_prompting_std_gpt2
+    prompt_pairs: 2

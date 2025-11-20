@@ -1,5 +1,0 @@
-wandb:
-    project: in-context-training
-    entity: quzhaorui22-university-of-chinese-of-academy-of-sciences
-    notes:
-    log_every_steps: 100
