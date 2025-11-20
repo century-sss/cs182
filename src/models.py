@@ -20,6 +20,16 @@ def build_model(conf):
             n_layer=conf.n_layer,
             n_head=conf.n_head,
         )
+    if conf.family == "gpt2_var":
+        model = TransformerModel_var_glu(
+            glu_type=conf.glu_type,
+            n_dims=conf.n_dims,
+            n_positions=conf.n_positions,
+            n_embd=conf.n_embd,
+            n_layer=conf.n_layer,
+            n_head=conf.n_head,
+        )
+
     else:
         raise NotImplementedError
 
@@ -140,6 +150,115 @@ class ChebyshevFitModel:
 
         return preds
 ###########################################################################
+
+
+###########################################################################
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+class GLUMLP(nn.Module):
+    """
+    GLU-based Feedforward layer replacing GPT2MLP.
+    Supports: 'glu', 'geglu', 'swiglu'
+    """
+    def __init__(self, n_embd, hidden_dim=None, glu_type="geglu"):
+        super().__init__()
+        hidden_dim = hidden_dim or 4 * n_embd
+
+        self.w1 = nn.Linear(n_embd, hidden_dim)
+        self.w2 = nn.Linear(n_embd, hidden_dim)
+        self.out = nn.Linear(hidden_dim, n_embd)
+
+        self.glu_type = glu_type.lower()
+
+    def forward(self, x):
+        a = self.w1(x)
+        b = self.w2(x)
+
+        if self.glu_type == "glu":
+            gated = a * torch.sigmoid(b)
+        elif self.glu_type == "geglu":
+            gated = a * F.gelu(b)
+        elif self.glu_type == "swiglu":
+            gated = a * F.silu(b)
+        else:
+            raise ValueError(f"Unknown GLU type {self.glu_type}")
+
+        return self.out(gated)
+
+
+
+class CustomGPT2Model(GPT2Model):
+    """
+    GPT2Model but with GLU-based MLP in every transformer block.
+    """
+    def __init__(self, config, glu_type="geglu"):
+        super().__init__(config)
+
+        n_embd = config.n_embd
+        hidden_dim = 4 * n_embd
+
+        # change mlp to GLUMLP
+        for block in self.h:
+            block.mlp = GLUMLP(
+                n_embd=n_embd,
+                hidden_dim=hidden_dim,
+                glu_type=glu_type,
+            )
+        self.glu_type = glu_type
+
+#copy the original transformerModel and change the backbone:
+class TransformerModel_var_glu(nn.Module):
+    def __init__(self, glu_type,n_dims, n_positions, n_embd=128, n_layer=12, n_head=4):
+        super(TransformerModel_var_glu, self).__init__()
+        configuration = GPT2Config(
+            n_positions=2 * n_positions,
+            n_embd=n_embd,
+            n_layer=n_layer,
+            n_head=n_head,
+            resid_pdrop=0.0,
+            embd_pdrop=0.0,
+            attn_pdrop=0.0,
+            use_cache=False,
+        )
+        self.name = f"gpt2_embd={n_embd}_layer={n_layer}_head={n_head}"
+
+        self.n_positions = n_positions
+        self.n_dims = n_dims
+        self._read_in = nn.Linear(n_dims, n_embd)
+        self._backbone = CustomGPT2Model(configuration, glu_type=glu_type) #change the backbone to our customGPT2Model
+        self._read_out = nn.Linear(n_embd, 1)
+
+    @staticmethod
+    def _combine(xs_b, ys_b):
+        """Interleaves the x's and the y's into a single sequence."""
+        bsize, points, dim = xs_b.shape
+        ys_b_wide = torch.cat(
+            (
+                ys_b.view(bsize, points, 1),
+                torch.zeros(bsize, points, dim - 1, device=ys_b.device),
+            ),
+            axis=2,
+        )
+        zs = torch.stack((xs_b, ys_b_wide), dim=2)
+        zs = zs.view(bsize, 2 * points, dim)
+        return zs
+
+    def forward(self, xs, ys, inds=None):
+        if inds is None:
+            inds = torch.arange(ys.shape[1])
+        else:
+            inds = torch.tensor(inds)
+            if max(inds) >= ys.shape[1] or min(inds) < 0:
+                raise ValueError("inds contain indices where xs and ys are not defined")
+        zs = self._combine(xs, ys)
+        embeds = self._read_in(zs)
+        output = self._backbone(inputs_embeds=embeds).last_hidden_state
+        prediction = self._read_out(output)
+        return prediction[:, ::2, 0][:, inds]  # predict only on xs
+###########################################################################
+
 class TransformerModel(nn.Module):
     def __init__(self, n_dims, n_positions, n_embd=128, n_layer=12, n_head=4):
         super(TransformerModel, self).__init__()
