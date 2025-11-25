@@ -46,7 +46,7 @@ def eval_batch(model, task_sampler, xs, xs_p=None):
         device = "cpu"
 
     if xs_p is None:
-        ys = task.evaluate(xs,None)
+        ys = task.evaluate(xs,None) #eval on degree 11
         pred = model(xs.to(device), ys.to(device)).detach()
         metrics = task.get_metric()(pred.cpu(), ys)
     else:
@@ -171,6 +171,7 @@ def eval_model(
 
     assert num_eval_examples % batch_size == 0
     data_sampler = get_data_sampler(data_name, n_dims, **data_sampler_kwargs)
+    print(task_sampler_kwargs)
     task_sampler = get_task_sampler(
         task_name, n_dims, batch_size, **task_sampler_kwargs
     )
@@ -209,6 +210,37 @@ def build_evals(conf):
     evaluation_kwargs = {}
 
     evaluation_kwargs["standard"] = {"prompting_strategy": "standard"}
+#################################################################
+    # ====== OOD polynomial regression ======
+    if task_name == "polynomial_regression":
+        # (1) degree OOD
+        
+        for d in [12, 13, 14, 15]:
+            evaluation_kwargs[f"ood_deg{d}"] = {
+                "task_sampler_kwargs": {"max_degree": d,"noise": False},
+            }
+        # (2) polynomial family OOD
+        evaluation_kwargs["monomial_family_ood"] = {
+            "task_sampler_kwargs": {"poly_family": "monomial","noise": False},
+        }
+        
+        # (3) noisy version of standard eval
+        evaluation_kwargs["standard_noisy"] = {
+            "task_sampler_kwargs": {"noise": True,"noise_std":0.1},
+        }
+        # (4) noisy family OOD
+        evaluation_kwargs["monomial_family_ood_noisy"] = {
+            "task_sampler_kwargs": {"poly_family": "monomial","noise": True,"noise_std": 0.1},
+        }
+        # ==== merge with base ====
+        for name, kwargs in evaluation_kwargs.items():
+            temp = base_kwargs.copy()
+            temp.update(kwargs)
+            evaluation_kwargs[name] = temp
+
+        return evaluation_kwargs
+########################################################################
+
     if task_name != "linear_regression":
         if task_name in ["relu_2nn_regression"]:
             evaluation_kwargs["linear_regression"] = {"task_name": "linear_regression"}
@@ -358,6 +390,7 @@ def read_run_dir(run_dir):
     for task in os.listdir(run_dir):
         task_dir = os.path.join(run_dir, task)
         for run_id in os.listdir(task_dir):
+            print(run_id)
             run_path = os.path.join(task_dir, run_id)
             _, conf = get_model_from_run(run_path, only_conf=True)
             params = {}

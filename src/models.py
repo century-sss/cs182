@@ -7,7 +7,7 @@ from sklearn.linear_model import LogisticRegression, Lasso
 import warnings
 from sklearn import tree
 import xgboost as xgb
-
+from moe import TransformerModel_var_moe
 from base_models import NeuralNetwork, ParallelNetworks
 
 
@@ -20,7 +20,7 @@ def build_model(conf):
             n_layer=conf.n_layer,
             n_head=conf.n_head,
         )
-    if conf.family == "gpt2_var":
+    elif  conf.family == "gpt2_var_glu":
         model = TransformerModel_var_glu(
             glu_type=conf.glu_type,
             n_dims=conf.n_dims,
@@ -29,6 +29,17 @@ def build_model(conf):
             n_layer=conf.n_layer,
             n_head=conf.n_head,
         )
+    elif conf.family == "gpt2_var_moe":
+        model = TransformerModel_var_moe(
+            n_dims=conf.n_dims,
+            n_positions=conf.n_positions,
+            n_embd=conf.n_embd,
+            n_layer=conf.n_layer,
+            n_head=conf.n_head,
+            num_experts=conf.num_experts, 
+            top_k=conf.top_k,
+        )
+        
 
     else:
         raise NotImplementedError

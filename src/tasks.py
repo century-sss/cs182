@@ -81,24 +81,41 @@ def get_task_sampler(
 import torch
 import numpy as np
 
-def chebyshev_polynomials(x, degree):
-    """计算从 T0 到 T_degree 的 Chebyshev 多项式值。
-    输入:
-        x: [N] 或 [B, N]
-    输出:
-        T: [B, N, degree+1]
+def generate_polynomials(x, degree, poly_family):
     """
-    if x.ndim == 1:
-        x = x.unsqueeze(0)  # [1, N]
+    x: [B, N]
+    return T: [B, N, degree+1]
+    """
     B, N = x.shape
-    T = torch.zeros(B, N, degree + 1, device=x.device)
-    T[:, :, 0] = 1
-    if degree >= 1:
-        T[:, :, 1] = x
-    for n in range(1, degree):
-        T[:, :, n + 1] = 2 * x * T[:, :, n] - T[:, :, n - 1]
-    return T
+    
+    if poly_family == "chebyshev":
+        T = torch.zeros(B, N, degree + 1, device=x.device)
+        T[:, :, 0] = 1
+        if degree >= 1:
+            T[:, :, 1] = x
+        for n in range(1, degree):
+            T[:, :, n + 1] = 2 * x * T[:, :, n] - T[:, :, n - 1]
+        return T
 
+    elif poly_family == "legendre":
+        # P0=1, P1=x, (n+1)Pn+1 = (2n+1)xPn - nPn-1
+        T = torch.zeros(B, N, degree + 1, device=x.device)
+        T[:, :, 0] = 1
+        if degree >= 1:
+            T[:, :, 1] = x
+        for n in range(1, degree):
+            T[:, :, n+1] = ((2*n+1)*x*T[:, :, n] - n*T[:, :, n-1]) / (n+1)
+        return T
+
+    elif poly_family == "monomial":
+        # x^0, x^1, ..., x^degree
+        powers = [torch.ones_like(x)]
+        for i in range(1, degree+1):
+            powers.append(x ** i)
+        return torch.stack(powers, dim=-1)  # [B, N, degree+1]
+
+    else:
+        raise ValueError(f"Unknown poly_family: {poly_family}")
 
 class PolynomialRegression(Task):
     def __init__(
@@ -109,6 +126,10 @@ class PolynomialRegression(Task):
         seeds=None,
         max_degree=11,
         scale=1.0,
+        poly_family="chebyshev",
+        noise=False,
+        noise_std=0,
+
     ):
         """
         论文中的 Chebyshev 多项式任务:
@@ -118,7 +139,10 @@ class PolynomialRegression(Task):
         super(PolynomialRegression, self).__init__(n_dims, batch_size, pool_dict, seeds)
         #assert n_dims == 1, "PolynomialRegression 仅支持一维输入。"
         self.max_degree = max_degree
+        self.poly_family = poly_family
         self.scale = scale
+        self.noise=noise
+        self.noise_std=noise_std
 
         if pool_dict is None and seeds is None:
             # 每个任务都有一组随机多项式系数 [b_size, degree+1]
@@ -148,18 +172,12 @@ class PolynomialRegression(Task):
         """
         x = xs_b[..., 0]  # 取出一维输入 [batch_size, n_points]
         B, N = x.shape
-        if max_degree:
-          self.max_degree=max_degree
-        degree = self.max_degree
+        degree = max_degree if max_degree is not None else self.max_degree
         coeffs = self.coeffs.to(x.device)
+        print("in evaluate poly_family:",self.poly_family)
+        print("in evaluate degree:",degree)
 
-        # 计算所有 T_i(x)，使用递推公式
-        T = torch.zeros(B, N, degree + 1, device=x.device)
-        T[:, :, 0] = 1
-        if degree >= 1:
-            T[:, :, 1] = x
-        for i in range(1, degree):
-            T[:, :, i + 1] = 2 * x * T[:, :, i] - T[:, :, i - 1]
+        T = generate_polynomials(x, degree, self.poly_family)
         #to do curriculum learning
         coeffs_trunc = coeffs[:, :degree+1]
         #print("task.max_degree:",self.max_degree)
@@ -167,6 +185,12 @@ class PolynomialRegression(Task):
         # print("T:",T)
         # 计算 y = Σ c_i * T_i(x)
         ys_b = (T * coeffs_trunc.unsqueeze(1)).sum(dim=-1)
+        print("in evaluate noise:",self.noise)
+        print("in evaluate noise_std:",self.noise_std)
+        if self.noise:
+            ys_b = ys_b + torch.randn_like(ys_b) * self.noise_std
+
+
         return self.scale * ys_b
 
     @staticmethod

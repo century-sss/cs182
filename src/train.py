@@ -188,7 +188,6 @@ def main(args):
 if __name__ == "__main__":
     parser = QuinineArgumentParser(schema=schema)
     args = parser.parse_quinfig()
-    assert args.model.family in ["gpt2", "lstm","gpt2_var"]
     print(f"Running with: {args}")
 
     if not args.test_run:
@@ -200,12 +199,13 @@ if __name__ == "__main__":
           # backbone hyperparams
           if hasattr(args.model, "glu_type"):
               hp.append(str(args.model.glu_type).lower())
-          if hasattr(args.model, "n_embd"):
-              hp.append(f"emb{args.model.n_embd}")
-          if hasattr(args.model, "n_layer"):
-              hp.append(f"layer{args.model.n_layer}")
-          if hasattr(args.model, "n_head"):
-              hp.append(f"head{args.model.n_head}")
+
+          #if hasattr(args.model, "n_embd"):
+          #   hp.append(f"emb{args.model.n_embd}")
+          #if hasattr(args.model, "n_layer"):
+          #    hp.append(f"layer{args.model.n_layer}")
+          #if hasattr(args.model, "n_head"):
+          #    hp.append(f"head{args.model.n_head}")
 
           #can also add training hyperparams
           if hasattr(args.training, "batch_size"):

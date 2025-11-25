@@ -14,8 +14,10 @@ from funcy import merge
 
 
 model_schema = {
-    "family": merge(tstring, allowed(["gpt2", "lstm","gpt2_var"])),
-    "glu_type": merge(tstring, allowed(["glu", "geglu", "swiglu"])),
+    "family": merge(tstring, allowed(["gpt2", "lstm","gpt2_var_glu","gpt2_var_moe"])),
+    "glu_type": merge(tstring, allowed(["glu", "geglu", "swiglu","None"])),
+    "num_experts":merge(tinteger, required),
+    "top_k":merge(tinteger, required),    
     "n_positions": merge(tinteger, required),  # maximum context length
     "n_dims": merge(tinteger, required),  # latent dimension
     "n_embd": merge(tinteger, required),
