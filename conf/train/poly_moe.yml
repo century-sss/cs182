@@ -1,43 +1,39 @@
-# tiny_poly.yml
+# conf/train/moe_gpt2.yml
 function_class:
   type: chebyshev kernel linear regression
   lowest_degree: 0
-  highest_degree: 3         # reduce degree to keep values reasonable
-  different_degrees: false  # disable random masking for now
-  fixed_linear_coefficients: 1
+  highest_degree: 11
+  fixed_linear_coefficients: 0
+  different_degrees: True
 
-steps: 10000                # very small number for fast testing
-log_freq: 100
-checkpoint_freq: 1000
+steps: 3002000
+log_freq: 2000
+checkpoint_freq: 20000
+
 optim:
   type: adam
-  lr: 0.001
+  lr: 0.00005
+
 loss_fn:
   type: mse
-b_size: 64                  # tiny batch size for fast iteration
+
+b_size: 64
 
 seq_len: !curriculum
   start: 5
-  stop: 11
-  step_size: 1
-  step_len: 100
+  stop: 81
+  step_size: 2
+  step_len: 2000
 
-x_dim: 1 # must b 1 
-
+x_dim: 1
 x_dist:
-  type: uniform              # use uniform instead of normal
+  type: uniform
 
-# Use moe GPT2 backbone
-model: 
-  type: moe_gpt2
-  n_positions: 32
-  x_dim: 1
-  y_dim: 1
-  n_embd: 64
+model:
+  type: moe_gpt2           # use dense token-wise MoE
+  n_positions: 81
   n_layer: 6
   n_head: 4
-  n_positions: 32
-  n_experts: 4
-  expert_dim: 128
-
-# baseline_models: []
+  n_embd: 128
+  n_experts: 4            # number of MoE experts per MLP
+  expert_dim: 256          # hidden size of each expert
