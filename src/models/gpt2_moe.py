@@ -74,22 +74,38 @@ class MoEFeedForward(nn.Module):
         # Router
         self.router = nn.Linear(in_dim, n_experts)
 
+    # def forward(self, x: Tensor) -> Tensor:
+    #     # x shape: [batch, seq_len, hidden]
+    #     B, S, H = x.shape
+    #     x_flat = x.reshape(-1, H)  # flatten for Linear: [B*S, H]
+
+    #     # Compute router gates
+    #     logits = self.router(x_flat)                 # [B*S, n_experts]
+    #     gates = torch.softmax(logits, dim=-1)       # [B*S, n_experts]
+
+    #     # Compute expert outputs
+    #     expert_outputs = torch.stack([expert(x_flat) for expert in self.experts], dim=-1)  # [B*S, H, E]
+
+    #     # Weighted sum over experts
+    #     output_flat = torch.einsum('bh e, b e -> bh', expert_outputs, gates)  # [B*S, H]
+
+    #     # Reshape back to [B, S, H]
+    #     output = output_flat.reshape(B, S, H)
+
+    #     return output
+
     def forward(self, x: Tensor) -> Tensor:
-        # x shape: [batch, seq_len, hidden]
         B, S, H = x.shape
-        x_flat = x.reshape(-1, H)  # flatten for Linear: [B*S, H]
-
-        # Compute router gates
-        logits = self.router(x_flat)                 # [B*S, n_experts]
-        gates = torch.softmax(logits, dim=-1)       # [B*S, n_experts]
-
-        # Compute expert outputs
-        expert_outputs = torch.stack([expert(x_flat) for expert in self.experts], dim=-1)  # [B*S, H, E]
-
-        # Weighted sum over experts
-        output_flat = torch.einsum('bh e, b e -> bh', expert_outputs, gates)  # [B*S, H]
-
-        # Reshape back to [B, S, H]
-        output = output_flat.reshape(B, S, H)
-
-        return output
+        x_flat = x.reshape(-1, H)  # [B*S, H]
+        
+        # Router gates
+        logits = self.router(x_flat)  # [B*S, n_experts]
+        gates = torch.softmax(logits, dim=-1)  # [B*S, n_experts]
+        
+        # Compute expert outputs - this is fine for dense MoE
+        expert_outputs = torch.stack([expert(x_flat) for expert in self.experts], dim=1)  # [B*S, E, H]
+        
+        # Weighted combination
+        output_flat = torch.einsum('beh,be->bh', expert_outputs, gates)  # [B*S, H]
+        
+        return output_flat.reshape(B, S, H)
