@@ -1,0 +1,40 @@
+model:
+  family: gpt2
+  "vocab_size": 1
+  glu_type: None
+  n_dims: 1
+  n_embd: 128
+  n_head: 4
+  n_layer: 6
+  n_positions: 81
+out_dir: ../models/polynomial_regression/baseline
+test_run: true
+training:
+  batch_size: 64
+  curriculum:
+    degree:
+      end: 11
+      inc: 2
+      interval: 2000
+      start: 1
+    points:
+      end: 81
+      inc: 2
+      interval: 2000
+      start: 5
+  data: uniform
+  keep_every_steps: 100000
+  learning_rate: 0.0001
+  num_tasks: null
+  num_training_examples: null
+  resume_id: null
+  save_every_steps: 1000
+  task: polynomial_regression
+  task_kwargs: {}
+  train_steps: 3002000
+wandb:
+  entity: quzhaorui22-university-of-chinese-of-academy-of-sciences
+  log_every_steps: 100
+  name: polynomial_regression_toy
+  notes: ''
+  project: in-context-training

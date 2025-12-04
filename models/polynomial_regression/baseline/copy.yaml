@@ -1,0 +1,34 @@
+b_size: 64
+baseline_models: []
+checkpoint_freq: 20000
+function_class:
+  different_degrees: true
+  fixed_linear_coefficients: 0
+  highest_degree: 11
+  lowest_degree: 0
+  type: chebyshev kernel linear regression
+log_freq: 2000
+loss_fn:
+  type: mse
+model:
+  n_embd: 128
+  n_head: 4
+  n_layer: 6
+  n_positions: 81
+  type: gpt2
+  x_dim: 1
+  y_dim: 1
+optim:
+  lr: 5.0e-05
+  type: adam
+seq_len: !curriculum
+  start: 5
+  step_len: 2000
+  step_size: 2
+  stop: 81
+skip_steps: 0
+steps: 3002000
+x_dim: 1
+x_dist:
+  type: uniform
+y_dim: 1
