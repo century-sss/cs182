@@ -22,7 +22,6 @@ def get_model_from_run(run_path, step=-1, only_conf=False):
         return None, conf
 
     model = models.build_model(conf.model)
-
     if step == -1:
         state_path = os.path.join(run_path, "state.pt")
         state = torch.load(state_path)
@@ -215,7 +214,7 @@ def build_evals(conf):
     if task_name == "polynomial_regression":
         # (1) degree OOD
         
-        for d in [12, 13, 14, 15]:
+        for d in [12,13,14,15]:
             evaluation_kwargs[f"ood_deg{d}"] = {
                 "task_sampler_kwargs": {"max_degree": d,"noise": False},
             }
@@ -331,6 +330,7 @@ def get_run_metrics(
         all_models = [model]
         if not skip_baselines:
             all_models += models.get_relevant_baselines(conf.training.task)
+    print(conf)
     evaluation_kwargs = build_evals(conf)
 
     if not cache:
@@ -338,7 +338,7 @@ def get_run_metrics(
     elif step == -1:
         save_path = os.path.join(run_path, "metrics.json")
     else:
-        save_path = os.path.join(run_path, f"metrics_{step}.json")
+        save_path = os.path.join(run_path, f"metrics.json")
 
     recompute = False
     if save_path is not None and os.path.exists(save_path):

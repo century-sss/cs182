@@ -37,7 +37,6 @@ def build_model(conf):
             n_layer=conf.n_layer,
             n_head=conf.n_head,
             num_experts=conf.num_experts, 
-            top_k=conf.top_k,
         )
         
 
@@ -105,59 +104,121 @@ def get_relevant_baselines(task_name):
 
 ##############################################
 #baseline model for polynomial function
-import numpy as np  
+import torch
 
 def chebyshev_polynomials(x, degree):
+    """
+    x: 1D tensor shape [N] or 2D [B, N]
+    Returns: if input 1D -> [N, degree+1]
+             if input 2D -> [B, N, degree+1]
+    """
+    squeeze_input = False
     if x.ndim == 1:
-        x = x.unsqueeze(0)
+        x = x.unsqueeze(0)  # (1, N)
+        squeeze_input = True
+
     B, N = x.shape
-    T = torch.zeros(B, N, degree + 1, device=x.device)
-    T[:, :, 0] = 1
+    D = degree + 1
+    T = torch.zeros(B, N, D, device=x.device, dtype=x.dtype)
+    T[:, :, 0] = 1.0
     if degree >= 1:
         T[:, :, 1] = x
     for n in range(1, degree):
         T[:, :, n + 1] = 2 * x * T[:, :, n] - T[:, :, n - 1]
-    return T
+
+    if squeeze_input:
+        return T.squeeze(0)  # [N, D]
+    return T  # [B, N, D]
 
 
 class ChebyshevFitModel:
     """
-    Baseline: fits Chebyshev coefficients via least squares for each task.
-    Predicts y = sum_i c_i * T_i(x)
+    Vectorized ICL-style Chebyshev baseline with adaptive/degenerate degree:
+      - zero-shot: constant predictor (mean of available y)
+      - few-shot: fit_degree = min(k-1, max_degree) (degenerate)
+      - many-shot: fit up to max_degree
+    Behavior: for each k (1..N-1) use first k points to predict x_next = x[k],
+              store prediction at preds[:, k].
     """
-    def __init__(self, max_degree=11, l2_reg=1e-6):
+    def __init__(self, max_degree=11, l2_reg=1e-6, device='cpu', dtype=torch.float32):
         self.max_degree = max_degree
-        print("fit model degree:",self.max_degree)
-        self.name = f"ChebyshevFitModel"
         self.l2_reg = l2_reg
+        self.name = "ChebyshevFitModel"
+        self.device = device
+        self.dtype = dtype
 
     def __call__(self, xs, ys, inds=None):
-        """
-        xs: [B, N, 1]
-        ys: [B, N]
-        Returns predicted ys of same shape [B, N]
-        """
-        xs, ys = xs.cpu(), ys.cpu()
+        # xs: [B, N, 1], ys: [B, N]
+        xs, ys = xs.to(self.device).type(self.dtype), ys.to(self.device).type(self.dtype)
         B, N, _ = xs.shape
-        degree = self.max_degree
+        Dmax = self.max_degree + 1
 
-        preds = torch.zeros_like(ys)
+        preds = torch.zeros(B, N, device=self.device, dtype=self.dtype)
 
-        for j in range(B):
-            x = xs[j, :, 0]  # [N]
-            y = ys[j, :]     # [N]
+        if N <= 1:
+            # trivial: if only 0 or 1 point, fill with constant (y0 or 0)
+            if N == 1:
+                preds[:, 0] = ys[:, 0]
+            return preds
 
-            # Build Chebyshev basis
-            T = chebyshev_polynomials(x, degree)[0]  # [N, degree+1]
-            D = degree + 1
+        # Precompute Chebyshev basis for all x for every item in batch
+        # T_all: [B, N, Dmax]
+        T_all = chebyshev_polynomials(xs.view(B, N), self.max_degree)  # returns [B, N, Dmax]
 
-            # Regularized least squares: c = (T^T T + λI)^-1 T^T y
-            XtX = T.T @ T
-            I = torch.eye(D)
-            c = torch.linalg.solve(XtX + self.l2_reg * I, T.T @ y)
+        # Precompute per-row outer products t_i @ t_i^T and t_i * y_i
+        # t_i: [B, N, Dmax]
+        t = T_all  # alias
+        # outer per point: [B, N, Dmax, Dmax]
+        # careful with memory: for moderate Dmax (<= 12) and N not huge, OK
+        outer = t.unsqueeze(3) * t.unsqueeze(2)  # broadcasting -> [B, N, Dmax, Dmax]
+        # Xty term per point: [B, N, Dmax]
+        Xty_per_point = t * ys.unsqueeze(2)  # [B, N, Dmax]
 
-            # Predict all points
-            preds[j] = (T @ c)
+        # Cumulative sums along points -> prefix sums for k=1..N
+        # XtX_prefix[k-1] = sum_{i=0..k-1} outer[:, i]
+        XtX_prefix = outer.cumsum(dim=1)  # [B, N, Dmax, Dmax]
+        Xty_prefix = Xty_per_point.cumsum(dim=1)  # [B, N, Dmax]
+
+        I_full = torch.eye(Dmax, device=self.device, dtype=self.dtype).unsqueeze(0).expand(B, Dmax, Dmax)
+
+        # zero-shot: fallback (we set preds[:,0]); use mean of available y if want
+        # For consistency with earlier choices, set preds[:,0] = mean of ys[:0]? set to 0 or ys[:,0]
+        # We'll set preds[:,0] = ys[:,0] if available, else 0
+        preds[:, 0] = ys[:, 0]
+
+        # Loop over k (1..N-1): use first k points (prefix index k-1) to predict x_next = x[k]
+        # This loop iterates N-1 times (typically small), but inner ops are batched over B.
+        for k in range(1, N):
+            # determine fit degree: deg = min(k-1, max_degree)
+            fit_degree = min(k - 1, self.max_degree)
+            d = fit_degree + 1  # number of basis used
+
+            # slice prefix matrices to first d dims
+            XtX_k = XtX_prefix[:, k - 1, :d, :d]  # [B, d, d]
+            Xty_k = Xty_prefix[:, k - 1, :d]      # [B, d]
+
+            # regularization: add lambda * I_d
+            # build I_d with batch
+            I_d = torch.eye(d, device=self.device, dtype=self.dtype).unsqueeze(0).expand(B, d, d)
+            A = XtX_k + self.l2_reg * I_d  # [B, d, d]
+            b = Xty_k.unsqueeze(2)         # [B, d, 1]
+
+            # If d == 1, can solve directly
+            # Use Cholesky for robustness and batch solve
+            # ensure A is symmetric positive definite (reg helps)
+            try:
+                L = torch.linalg.cholesky(A)        # [B, d, d]
+                c = torch.cholesky_solve(b, L).squeeze(2)  # [B, d]
+            except RuntimeError:
+                # fallback to torch.linalg.solve if cholesky fails
+                # solve for each batch (vectorized solve available)
+                c = torch.linalg.solve(A, b).squeeze(2)  # [B, d]
+
+            # Build T_next for x_next: need first d basis entries
+            T_next_full = T_all[:, k, :d]  # [B, d]
+            # predicted y_next for each batch
+            y_pred_k = (T_next_full * c).sum(dim=1)  # [B]
+            preds[:, k] = y_pred_k
 
         return preds
 ###########################################################################
@@ -271,10 +332,11 @@ class TransformerModel_var_glu(nn.Module):
 ###########################################################################
 
 class TransformerModel(nn.Module):
-    def __init__(self, n_dims, n_positions, n_embd=128, n_layer=12, n_head=4):
+    def __init__(self,n_dims, n_positions, n_embd=128, n_layer=12, n_head=4):
         super(TransformerModel, self).__init__()
         configuration = GPT2Config(
             n_positions=2 * n_positions,
+            vocab_size=0,  
             n_embd=n_embd,
             n_layer=n_layer,
             n_head=n_head,

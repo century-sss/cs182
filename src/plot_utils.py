@@ -46,7 +46,6 @@ relevant_model_names = {
 
 }
 
-
 def basic_plot(metrics, models=None, trivial=1.0):
     fig, ax = plt.subplots(1, 1)
     if models is not None:
@@ -54,22 +53,26 @@ def basic_plot(metrics, models=None, trivial=1.0):
 
     color = 0
     ax.axhline(trivial, ls="--", color="gray")
+
+    start_x = 15  #start from 15 since in collect_results we skip the first 15 examples
+
     for name, vs in metrics.items():
-        ax.plot(vs["mean"], "-", label=name, color=palette[color % 10], lw=2)
+        mean = vs["mean"]
         low = vs["bootstrap_low"]
         high = vs["bootstrap_high"]
-        ax.fill_between(range(len(low)), low, high, alpha=0.3)
+
+        xs = range(start_x, start_x + len(mean))
+
+        ax.plot(xs, mean, "-", label=name, color=palette[color % 10], lw=2)
+        ax.fill_between(xs, low, high, alpha=0.3)
+
         color += 1
+
     ax.set_xlabel("in-context examples")
     ax.set_ylabel("squared error")
-    ax.set_xlim(-1, len(low) + 0.1)
-    #ax.set_ylim(-0.1, 1.25)
-#############################
-    all_values = [v for vs in metrics.values() for v in vs["mean"]]
-    y_min, y_max = min(all_values), max(all_values)
-    margin = 0.1 * (y_max - y_min)
-    ax.set_ylim(y_min - margin, y_max + margin)
-#############################
+    ax.set_xlim(start_x - 1, start_x + len(low))
+    ax.set_ylim(-0.1, 1.25)
+
     legend = ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
     fig.set_size_inches(4, 3)
     for line in legend.get_lines():
@@ -78,8 +81,10 @@ def basic_plot(metrics, models=None, trivial=1.0):
     return fig, ax
 
 
+
 def collect_results(run_dir, df, valid_row=None, rename_eval=None, rename_model=None):
     all_metrics = {}
+    SKIP_FIRST = 15       # cut off some examples
     for _, r in df.iterrows():
         if valid_row is not None and not valid_row(r):
             continue
@@ -93,10 +98,14 @@ def collect_results(run_dir, df, valid_row=None, rename_eval=None, rename_model=
         for eval_name, results in sorted(metrics.items()):
             processed_results = {}
             for model_name, m in results.items():
-                if "gpt2" in model_name in model_name:
+                print(model_name)
+                if "gpt2" in model_name:
                     model_name = "Transformer"
+                    print("in gpt2:",model_name)
                     if rename_model is not None:
                         model_name = rename_model(model_name, r)
+
+
                 else:
                     model_name = baseline_names(model_name)
                 m_processed = {}
@@ -105,17 +114,33 @@ def collect_results(run_dir, df, valid_row=None, rename_eval=None, rename_model=
                 xlim = 2 * n_dims + 1
                 if r.task in ["relu_2nn_regression", "decision_tree"]:
                     xlim = 200
-
+                if r.task in ["polynomial_regression"]:
+                    xlim = 81
                 normalization = n_dims
                 if r.task == "sparse_linear_regression":
                     normalization = int(r.kwargs.split("=")[-1])
                 if r.task == "decision_tree":
                     normalization = 1
 
+
+
+
+
+                trim_left = SKIP_FIRST if (r.task == "polynomial_regression") else 0
+
                 for k, v in m.items():
+                    # step 1: 裁掉前 trim_left 个 example
+                    if trim_left > 0:
+                        v = v[trim_left:]
+
+                    # step 2: 再裁到 xlim
                     v = v[:xlim]
+
+                    # step 3: normalization
                     v = [vv / normalization for vv in v]
+
                     m_processed[k] = v
+
                 processed_results[model_name] = m_processed
             if rename_eval is not None:
                 eval_name = rename_eval(eval_name, r)

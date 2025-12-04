@@ -3,12 +3,13 @@ inherit:
     - wandb.yaml
 
 model:
-    "family": "gpt2_var_moe"
-    "glu_type": "glu" 
-    "num_experts": 11
+    "family": "gpt2"
+    "vocab_size": 1
+    "glu_type": "None" 
+    "num_experts": 4
     "top_k": 2
     "n_positions": 81
-    "n_dims": 128
+    "n_dims": 1
     "n_embd": 128
     "n_layer": 6
     "n_head": 4
