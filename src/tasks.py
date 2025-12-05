@@ -143,15 +143,17 @@ class PolynomialRegression(Task):
         self.scale = scale
         self.noise=noise
         self.noise_std=noise_std
+        self.seeds=seeds
+        self.b_size=batch_size
 
         if pool_dict is None and seeds is None:
             # 每个任务都有一组随机多项式系数 [b_size, degree+1]
             self.coeffs = torch.randn(self.b_size, self.max_degree + 1)
-        elif seeds is not None:
+        elif self.seeds is not None:
             self.coeffs = torch.zeros(self.b_size, self.max_degree + 1)
             generator = torch.Generator()
-            assert len(seeds) == self.b_size
-            for i, seed in enumerate(seeds):
+            assert len(self.seeds) == self.b_size
+            for i, seed in enumerate(self.seeds):
                 generator.manual_seed(seed)
                 self.coeffs[i] = torch.randn(self.max_degree + 1, generator=generator)
         else:
@@ -176,6 +178,7 @@ class PolynomialRegression(Task):
         coeffs = self.coeffs.to(x.device)
         print("in evaluate poly_family:",self.poly_family)
         print("in evaluate degree:",degree)
+        print("in evaluate seeds:",self.seeds)
 
         T = generate_polynomials(x, degree, self.poly_family)
         #to do curriculum learning

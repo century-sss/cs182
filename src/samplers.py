@@ -38,19 +38,20 @@ def sample_transformation(eigenvalues, normalize=False):
 #because abs(x) could be greater than 1 so the y from polynomial function may explode
 #which makes the loss too big and hard for training 
 class UniformSampler(DataSampler):
-    def __init__(self, n_dims, bias=None, scale=None):
+    def __init__(self, n_dims, bias=None, scale=None,seeds=None):
         super().__init__(n_dims)
         self.bias = bias
         self.scale = scale
-
+        self.seeds=seeds
     def sample_xs(self, n_points, b_size, n_dims_truncated=None, seeds=None):
-        if seeds is None:
+        if self.seeds is None:
             xs_b = torch.rand(b_size, n_points, self.n_dims) * 2 - 1  # 🔹 Uniform[-1,1]
         else:
+            print("samplers with seeds:",self.seeds)
             xs_b = torch.zeros(b_size, n_points, self.n_dims)
             generator = torch.Generator()
-            assert len(seeds) == b_size
-            for i, seed in enumerate(seeds):
+            assert len(self.seeds) == b_size
+            for i, seed in enumerate(self.seeds):
                 generator.manual_seed(seed)
                 xs_b[i] = torch.rand(n_points, self.n_dims, generator=generator) * 2 - 1  # 🔹 Uniform[-1,1]
 

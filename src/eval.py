@@ -207,29 +207,40 @@ def build_evals(conf):
     }
 
     evaluation_kwargs = {}
+    b_size = 64
+    base = 114514
+    seeds = [base + i for i in range(b_size)]
 
-    evaluation_kwargs["standard"] = {"prompting_strategy": "standard"}
+    evaluation_kwargs["standard"] = {
+            "prompting_strategy": "standard",
+            "task_sampler_kwargs": {"seeds":seeds},
+            "data_sampler_kwargs": {"seeds":seeds},
+        }
 #################################################################
     # ====== OOD polynomial regression ======
     if task_name == "polynomial_regression":
         # (1) degree OOD
-        
         for d in [12,13,14,15]:
             evaluation_kwargs[f"ood_deg{d}"] = {
-                "task_sampler_kwargs": {"max_degree": d,"noise": False},
+                "task_sampler_kwargs": {"max_degree": d,"noise": False,"seeds":seeds},
+                "data_sampler_kwargs": {"seeds":seeds},
             }
         # (2) polynomial family OOD
         evaluation_kwargs["monomial_family_ood"] = {
-            "task_sampler_kwargs": {"poly_family": "monomial","noise": False},
+            "task_sampler_kwargs": {"poly_family": "monomial","noise": False,"seeds":seeds},
+            "data_sampler_kwargs": {"seeds":seeds},
+
         }
         
         # (3) noisy version of standard eval
         evaluation_kwargs["standard_noisy"] = {
-            "task_sampler_kwargs": {"noise": True,"noise_std":0.1},
+            "task_sampler_kwargs": {"noise": True,"noise_std":0.1,"seeds":seeds},
+            "data_sampler_kwargs": {"seeds":seeds},
         }
         # (4) noisy family OOD
         evaluation_kwargs["monomial_family_ood_noisy"] = {
-            "task_sampler_kwargs": {"poly_family": "monomial","noise": True,"noise_std": 0.1},
+            "task_sampler_kwargs": {"poly_family": "monomial","noise": True,"noise_std": 0.1,"seeds":seeds},
+            "data_sampler_kwargs": {"seeds":seeds},
         }
         # ==== merge with base ====
         for name, kwargs in evaluation_kwargs.items():

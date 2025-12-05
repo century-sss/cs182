@@ -46,15 +46,16 @@ relevant_model_names = {
 
 }
 
-def basic_plot(metrics, models=None, trivial=1.0):
+def basic_plot(metrics, models=None, trivial=1.0, start_x=0,
+               y_min=None, y_max=None, save_path=None, dpi=300):
     fig, ax = plt.subplots(1, 1)
+
+    # 选择要画的 model
     if models is not None:
         metrics = {k: metrics[k] for k in models}
 
     color = 0
     ax.axhline(trivial, ls="--", color="gray")
-
-    start_x = 15  #start from 15 since in collect_results we skip the first 15 examples
 
     for name, vs in metrics.items():
         mean = vs["mean"]
@@ -65,26 +66,40 @@ def basic_plot(metrics, models=None, trivial=1.0):
 
         ax.plot(xs, mean, "-", label=name, color=palette[color % 10], lw=2)
         ax.fill_between(xs, low, high, alpha=0.3)
-
         color += 1
 
+    # x,y 轴
     ax.set_xlabel("in-context examples")
     ax.set_ylabel("squared error")
-    ax.set_xlim(start_x - 1, start_x + len(low))
-    ax.set_ylim(-0.1, 1.25)
+    ax.set_xlim(start_x - 1, start_x + len(mean))
 
+    # -------- 新增：支持外部传 y_min, y_max --------
+    if y_min is None:
+        y_min = -0.1
+    if y_max is None:
+        y_max = 1.25
+    ax.set_ylim(y_min, y_max)
+
+    # legend，图像大小
     legend = ax.legend(loc="upper left", bbox_to_anchor=(1, 1))
     fig.set_size_inches(4, 3)
+
     for line in legend.get_lines():
         line.set_linewidth(3)
+
+    # -------- 新增：保存图像 --------
+    if save_path is not None:
+        fig.savefig(save_path, dpi=dpi, bbox_inches="tight")
+        print(f"Saved figure to {save_path}")
 
     return fig, ax
 
 
 
-def collect_results(run_dir, df, valid_row=None, rename_eval=None, rename_model=None):
+
+def collect_results(run_dir, df, valid_row=None, rename_eval=None, rename_model=None,start_x=0):
     all_metrics = {}
-    SKIP_FIRST = 15       # cut off some examples
+    SKIP_FIRST = start_x      # cut off some examples
     for _, r in df.iterrows():
         if valid_row is not None and not valid_row(r):
             continue
