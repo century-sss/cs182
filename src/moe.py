@@ -28,6 +28,7 @@ class MoEMLP(nn.Module):
 
         # Router: produce softmax weights for all experts
         self.router = nn.Linear(in_dim, n_experts)
+        self.last_gates = None
 
     def forward(self, x):
         # x: [B, S, H]
@@ -37,6 +38,8 @@ class MoEMLP(nn.Module):
         # router logits & softmax
         logits = self.router(x_flat)     # [B*S, E]
         gates = torch.softmax(logits, dim=-1)  # [B*S, E]
+
+        self.last_gates = gates.view(B, S, self.n_experts)
 
         # expert outputs: stack → [B*S, E, H]
         expert_outputs = torch.stack(
@@ -117,7 +120,7 @@ class TransformerModel_var_moe(nn.Module):
         zs = zs.view(bsize, 2 * points, dim)
         return zs
 
-    def forward(self, xs, ys, inds=None):
+    def forward(self, xs, ys, inds=None,return_gates=False):
         if inds is None:
             inds = torch.arange(ys.shape[1])
         else:
@@ -129,4 +132,15 @@ class TransformerModel_var_moe(nn.Module):
         embeds = self._read_in(zs)
         output = self._backbone(inputs_embeds=embeds).last_hidden_state
         prediction = self._read_out(output)
-        return prediction[:, ::2, 0][:, inds]
+        if not return_gates:
+          return prediction[:, ::2, 0][:, inds]
+
+        gate_list = []
+        for block in self._backbone.h:   # 每一层 GPT2 block
+            mlp = block.mlp
+            if hasattr(mlp, "last_gates") and mlp.last_gates is not None:
+                gate_list.append(mlp.last_gates)   # [B, S, E]
+            else:
+                gate_list.append(None)  # 有问题时占位
+
+        return prediction, gate_list
